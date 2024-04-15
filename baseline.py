@@ -1,36 +1,29 @@
-from torch_geometric.datasets import Planetoid
+from tqdm.std import tqdm
+import torch
 from torch_geometric.utils import k_hop_subgraph
 from torch_geometric.data import Data
+from data_loader import dataset_func
+import numpy as np
+from wl_similarity import sim_wl
 
-dataset = Planetoid(root='/tmp/Cora', name='Cora')
-data = dataset[0]  # Get the first graph object
 
-def extract_3_hop_subgraphs(data, num_hops=3):
-    subgraph_data_list = []
-    test_nodes = data.test_mask.nonzero(as_tuple=True)[0]
+def extract_k_hop_subgraphs(node, graph, num_hops=3):
+        
+    # Extract the 3-hop subgraph surrounding the test node
+    subgraph_node_indices, subgraph_edge_indices, mapping, edge_mask = k_hop_subgraph(
+        node_idx=node.item(), num_hops=num_hops, edge_index=graph.edge_index, relabel_nodes=True)
     
-    for node in test_nodes:
-        # Extract the 3-hop subgraph surrounding the test node
-        subgraph_node_indices, subgraph_edge_indices, mapping, edge_mask = k_hop_subgraph(
-            node_idx=node.item(), num_hops=num_hops, edge_index=data.edge_index, relabel_nodes=True)
-        
-        # Prepare the subgraph data
-        subgraph_features = data.x[subgraph_node_indices]
-        subgraph_labels = data.y[subgraph_node_indices]
-        subgraph_edge_index = data.edge_index[:, edge_mask]
+    # Prepare the subgraph data
+    subgraph_features = graph.x[subgraph_node_indices]
+    subgraph_labels = graph.y[subgraph_node_indices]
+    wl_labels = graph.wl_y[subgraph_node_indices]
+    subgraph_edge_index = subgraph_edge_indices
 
-        # If your graph includes edge features, extract those for the subgraph as well
-        subgraph_edge_attr = data.edge_attr[edge_mask] if data.edge_attr is not None else None
-
-        # Create a new Data object for the subgraph
-        subgraph = Data(x=subgraph_features, edge_index=subgraph_edge_index, y=subgraph_labels, edge_attr=subgraph_edge_attr)
-        
-        # You can also include other data attributes as needed
-        # For example, if your graph has a 'train_mask', 'val_mask', or 'test_mask', you can compute them here
-        
-        subgraph_data_list.append((node, subgraph))
+    # Create a new Data object for the subgraph
+    subgraph = Data(x=subgraph_features, edge_index=subgraph_edge_index, y=subgraph_labels, wl_y=wl_labels)
     
-    return subgraph_data_list
+    return subgraph
+
 
 def generate_unique_pairs(arr):
     unique_pairs = set()
@@ -40,13 +33,43 @@ def generate_unique_pairs(arr):
     return unique_pairs
 
 
-# Extract 3-hop subgraphs for test nodes
-subgraph_data_list = extract_3_hop_subgraphs(data)
+def clean_data(test_nodes, graph, node1):
+    all_nodes = set(range(graph.num_nodes))
+    connected_nodes = set(graph.edge_index.view(-1).tolist())
+    isolated_nodes = torch.tensor(sorted(list(all_nodes - connected_nodes)))
+    mask = ~test_nodes.unsqueeze(1).eq(isolated_nodes).any(1)
+    clean_test_nodes = test_nodes[mask]
+    mask = clean_test_nodes != node1
+    clean_test_nodes = clean_test_nodes[mask]
+    return clean_test_nodes
 
-# Example usage
-pairs = generate_unique_pairs(subgraph_data_list)
 
-for node1, node2 in range(pairs):
-    v1, subg1 = node1
-    v2, subg2 = node2
-    
+if __name__ == "__main__":
+
+    k = 5
+    seed = 42
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+
+    graph = dataset_func('bail')
+    print('dataset prepared. ')
+
+    # Extract 3-hop subgraphs for one test node
+    test_nodes = torch.where(graph.test_mask)[0]
+
+    # given a node
+    n_idx = seed
+    node1 = test_nodes[n_idx]
+    subgraph1 = extract_k_hop_subgraphs(node1, graph)
+    remaining_nodes = clean_data(test_nodes, graph, node1)
+
+    rank_dict = {}
+    for node2 in tqdm(remaining_nodes, desc='num_nodes'):
+        subgraph2 = extract_k_hop_subgraphs(node2, graph)
+        sim_score = sim_wl(subgraph1, subgraph2, 3).item()
+        # if sim_score > 0.1:
+        rank_dict[node2.item()] = sim_score
+    # top_k = sorted(rank_dict.items())[:k]
+    top_k = sorted(rank_dict.items(), key=lambda item: item[1], reverse=True)[:k]
+
+    print(top_k)

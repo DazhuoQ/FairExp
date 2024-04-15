@@ -36,7 +36,7 @@ def visualize(h, color, nodelist=None, epoch=None, loss=None):
     plt.show()
 
 if __name__ == "__main__":
-    data_path_root = './'
+    data_path_root = ''
     adj, features, labels, idx_train_list, idx_val_list, idx_test_list, sens, sens_idx, raw_data_info = dpp.load_data(data_path_root, "bail")
     if raw_data_info is None:
         raw_data_info = {'adj': adj}
@@ -44,6 +44,7 @@ if __name__ == "__main__":
     adj = adj[:200, :200]
     adj = adj - sp.eye(adj.shape[0])
     features = features[:200]
+    print(f'features:{features.size(1)}')
     labels = labels[:200]
     edge_index = torch.tensor(adj.nonzero(), dtype=torch.long)
     num_class = labels.unique().shape[0] - 1

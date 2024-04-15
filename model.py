@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.datasets import Planetoid
 
-dataset = Planetoid(root='/tmp/Cora', name='Cora')
+from data_loader import dataset_func
 
 class GCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -23,9 +23,11 @@ class GCN(torch.nn.Module):
 
 
 # training
+dataset_name = 'bail'
+data = dataset_func(dataset_name)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-model = GCN(input_dim=dataset.num_node_features, hidden_dim=16, output_dim=dataset.num_classes).to(device)
-data = dataset[0].to(device)
+model = GCN(input_dim=data.x.size(1), hidden_dim=16, output_dim=data.y.size(0)).to(device)
+data.to(device)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01, weight_decay=5e-4)
 
 model.train()
@@ -36,6 +38,7 @@ for epoch in range(200):
     loss.backward()
     optimizer.step()
     print(f'Epoch {epoch+1}, Loss: {loss.item()}')
+torch.save(model.state_dict(), 'models/{}_gcn_model.pth'.format(dataset_name))
 
 
 # evaluation

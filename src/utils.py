@@ -113,18 +113,19 @@ def load_credit(dataset, sens_attr="Age", predict_attr="NoDefaultNextMonth", pat
     return adj, features, labels, idx_train_list, idx_val_list, idx_test_list, sens
 
 
-def load_bail(dataset, sens_attr="WHITE", predict_attr="RECID", path="../dataset/bail/", label_number=1000):
+def load_bail(dataset, sens_attr="WHITE", predict_attr="RECID", path="dataset/bail/", label_number=1000):
     # print('Loading {} dataset from {}'.format(dataset, path))
-    idx_features_labels = pd.read_csv(os.path.join(path,"{}.csv".format(dataset)))
+    # idx_features_labels = pd.read_csv(os.path.join(path,"{}.csv".format(dataset)))
+    idx_features_labels = pd.read_csv('dataset/bail/bail.csv')
     header = list(idx_features_labels.columns)
     header.remove(predict_attr)
 
     # build relationship
     if os.path.exists(f'{path}/{dataset}_edges.txt'):
-        edges_unordered = np.genfromtxt(f'{path}/{dataset}_edges.txt').astype('int')
+        edges_unordered = np.genfromtxt(f'dataset/bail/bail_edges.txt').astype('int')
     else:
         edges_unordered = build_relationship(idx_features_labels[header], thresh=0.6)
-        np.savetxt(f'{path}/{dataset}_edges.txt', edges_unordered)
+        np.savetxt(f'dataset/bail/bail_edges.txt', edges_unordered)
 
     features = sp.csr_matrix(idx_features_labels[header], dtype=np.float32)
     labels = idx_features_labels[predict_attr].values
@@ -133,6 +134,7 @@ def load_bail(dataset, sens_attr="WHITE", predict_attr="RECID", path="../dataset
     idx_map = {j: i for i, j in enumerate(idx)}
     edges = np.array(list(map(idx_map.get, edges_unordered.flatten())),
                      dtype=int).reshape(edges_unordered.shape)
+    # print(edges)
     adj = sp.coo_matrix((np.ones(edges.shape[0]), (edges[:, 0], edges[:, 1])),
                         shape=(labels.shape[0], labels.shape[0]),
                         dtype=np.float32)

@@ -5,7 +5,7 @@ This file is for data preprocessing and data analysis
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
-from utils import *
+from src.utils import *
 from matplotlib import pyplot
 import numpy as np
 from numpy import cov
@@ -18,7 +18,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics.pairwise import cosine_similarity
 import pickle
 import scipy.io as scio
-from CFGT import CFGT
+from src.CFGT import CFGT
 
 # set device
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -150,7 +150,7 @@ def load_data(path_root, dataset):
         sens_idx = 0
         predict_attr = "RECID"
         label_number = 100
-        path_bail = path_root + "./dataset/bail"
+        path_bail = path_root + "../dataset/bail"
         adj, features, labels, idx_train, idx_val, idx_test, sens = load_bail(dataset, sens_attr,
                                                                                 predict_attr, path=path_bail,
                                                                                 label_number=label_number,
