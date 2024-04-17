@@ -20,7 +20,7 @@ def load_bail():
     adj, features, labels, _, _, _, _, _, _ = dpp.load_data(data_path_root, "bail")
 
     # get first n_nodes nodes
-    n_nodes = 5000
+    n_nodes = 200
     adj = adj[:n_nodes, :n_nodes]
     adj = adj - sp.eye(adj.shape[0])
     features = features[:n_nodes]
