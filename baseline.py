@@ -5,6 +5,8 @@ from torch_geometric.data import Data
 from data_loader import dataset_func
 import numpy as np
 from wl_similarity import sim_wl
+import torch.nn.functional as F
+from model import GCN
 
 
 def extract_k_hop_subgraphs(node, graph, num_hops=3):
@@ -50,25 +52,40 @@ if __name__ == "__main__":
     seed = 42
     np.random.seed(seed)
     torch.manual_seed(seed)
+    dataset_name = 'bail'
 
-    graph = dataset_func('bail')
+    graph = dataset_func(dataset_name)
     print('dataset prepared. ')
 
     # Extract 3-hop subgraphs for one test node
     test_nodes = torch.where(graph.test_mask)[0]
 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = GCN(input_dim=graph.x.size(1), hidden_dim=16, output_dim=graph.y.size(0))
+    model.load_state_dict(torch.load('models/{}_gcn_model.pth'.format(dataset_name)))
+    model.eval()
+    model.to(device)
+
+    out = model(graph)
+    probs = F.softmax(out, dim=1)
+
     # given a node
     n_idx = seed
     node1 = test_nodes[n_idx]
+    pred_label_1 = probs[node1].argmax().item()
     subgraph1 = extract_k_hop_subgraphs(node1, graph)
     remaining_nodes = clean_data(test_nodes, graph, node1)
 
     rank_dict = {}
     for node2 in tqdm(remaining_nodes, desc='num_nodes'):
+        pred_label_2 = probs[node2].argmax().item()
         subgraph2 = extract_k_hop_subgraphs(node2, graph)
         sim_score = sim_wl(subgraph1, subgraph2, 3).item()
         # if sim_score > 0.1:
-        rank_dict[node2.item()] = sim_score
+        if pred_label_1 != pred_label_2:
+            print(f'counterfactual: {pred_label_1}, {pred_label_2}')
+            print(f'real counterfactual: {graph.y[node1]}, {graph.y[node2]}')
+            rank_dict[node2.item()] = sim_score
     # top_k = sorted(rank_dict.items())[:k]
     top_k = sorted(rank_dict.items(), key=lambda item: item[1], reverse=True)[:k]
 
