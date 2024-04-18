@@ -20,7 +20,7 @@ def load_bail():
     adj, features, labels, _, _, _, _, _, _ = dpp.load_data(data_path_root, "bail")
 
     # get first n_nodes nodes
-    n_nodes = 5000
+    n_nodes = 500
     adj = adj[:n_nodes, :n_nodes]
     adj = adj - sp.eye(adj.shape[0])
     features = features[:n_nodes]
@@ -52,6 +52,9 @@ def load_bail():
     
     return data
 
+# def feature_selection(features):
+#     return 
+
 
 def attr_tag(data, setting):
     if setting == 'sa':
@@ -61,13 +64,18 @@ def attr_tag(data, setting):
         # Convert combined attribute strings to their corresponding unique integers
         node_labels = torch.tensor([string_to_int_map[string] for string in node_feature_strings], dtype=torch.long)
         data.wl_y = node_labels
+    elif setting == 'ss':
+        node_feature_strings = [''.join(map(str, features.tolist()[:3])) for features in data.x]
+        string_to_int_map = {string: i for i, string in enumerate(set(node_feature_strings))}
+        node_labels = torch.tensor([string_to_int_map[string] for string in node_feature_strings], dtype=torch.long)
+        data.wl_y = node_labels
     elif setting == 's':
-        data.wl_y = data.y
+        data.wl_y = torch.ones(data.y.size(0), dtype=torch.long)
     return data
 
 def dataset_func(dataset_name):
 
-    setting = 'sa' # s, ss, sa
+    setting = 'sa' # s, ss, sa / structure, structure subset, structure all
 
     if dataset_name == 'bail':
         data = load_bail()
