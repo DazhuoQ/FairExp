@@ -5,7 +5,7 @@ import torch
 from torch_geometric.utils import k_hop_subgraph
 from torch_geometric.data import Data
 from torch_geometric.utils.convert import to_networkx
-from data_loader import dataset_func
+from utils import dataset_func
 import numpy as np
 
 import networkx as nx
@@ -13,6 +13,9 @@ from wl_similarity import sim_wl
 from neural_subgraph_learning.common import utils
 from neural_subgraph_learning.subgraph_matching.config import parse_encoder
 from neural_subgraph_learning.subgraph_matching.train import build_model
+
+import torch.nn.functional as F
+from model import GCN
 
 def extract_k_hop_subgraphs(node, graph, num_hops=3):
         
@@ -41,7 +44,7 @@ def generate_unique_pairs(arr):
     return unique_pairs
 
 
-def clean_data(test_nodes, graph, node1):
+def clean_test_data(test_nodes, graph, node1):
     all_nodes = set(range(graph.num_nodes))
     connected_nodes = set(graph.edge_index.view(-1).tolist())
     isolated_nodes = torch.tensor(sorted(list(all_nodes - connected_nodes)))
@@ -50,6 +53,16 @@ def clean_data(test_nodes, graph, node1):
     mask = clean_test_nodes != node1
     clean_test_nodes = clean_test_nodes[mask]
     return clean_test_nodes
+
+# def clean_test_data(test_nodes, graph, node1):
+#     all_nodes = set(range(graph.num_nodes))
+#     connected_nodes = set(graph.edge_index.view(-1).tolist())
+#     isolated_nodes = torch.tensor(sorted(list(all_nodes - connected_nodes)))
+#     mask = ~test_nodes.unsqueeze(1).eq(isolated_nodes).any(1)
+#     clean_test_nodes = test_nodes[mask]
+#     mask = clean_test_nodes != node1
+#     clean_test_nodes = clean_test_nodes[mask]
+#     return clean_test_nodes
 
 def gen_alignment_matrix(model, query, target, u, v, method_type="order"):
     """Generate subgraph matching alignment matrix for a given query and
@@ -82,24 +95,43 @@ def gen_alignment_matrix(model, query, target, u, v, method_type="order"):
 if __name__ == "__main__":
 
     k = 5
-    seed = 42
+    seed = 12
     np.random.seed(seed)
     torch.manual_seed(seed)
-
-    graph = dataset_func('bail')
+    dataset_name = 'bail'
+    graph = dataset_func(dataset_name)
     print('dataset prepared. ')
 
     # Extract 3-hop subgraphs for one test node
     test_nodes = torch.where(graph.test_mask)[0]
+    all_nodes = list(range(graph.num_nodes))
+
+    # given a node
+    # n_idx = seed
+    # node1 = test_nodes[12]
+    # subgraph1, mapping1 = extract_k_hop_subgraphs(node1.item(), graph)
+    # nx.draw(subgraph1)
+    # plt.show()
+    # remaining_nodes = clean_data(test_nodes, graph, node1)
+
+ 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    model = GCN(input_dim=graph.x.size(1), hidden_dim=16, output_dim=graph.y.size(0))
+    model.load_state_dict(torch.load('models/{}_gcn_model.pth'.format(dataset_name)))
+    model.eval()
+    model.to(device)
+
+    out = model(graph)
+    probs = F.softmax(out, dim=1)
 
     # given a node
     n_idx = seed
-    node1 = test_nodes[12]
+    node1 = test_nodes[n_idx]
+    pred_label_1 = probs[node1].argmax().item()
     subgraph1, mapping1 = extract_k_hop_subgraphs(node1.item(), graph)
     nx.draw(subgraph1)
     plt.show()
-    remaining_nodes = clean_data(test_nodes, graph, node1)
-    
+    remaining_nodes = clean_test_data(test_nodes, graph, node1)   
     
     parser = argparse.ArgumentParser(description='Alignment arguments')
     utils.parse_optimizer(parser)
@@ -110,19 +142,33 @@ if __name__ == "__main__":
         default="")
     args = parser.parse_args()
     args.test = True
-    model = build_model(args)
+    nm_model = build_model(args)
     
 
+    # rank_dict = {}
+    # for node2 in remaining_nodes:
+    #     subgraph2, mapping2 = extract_k_hop_subgraphs(node2.item(), graph)
+    #     sim_score = gen_alignment_matrix(nm_model, subgraph1, subgraph2, mapping1, mapping2)
+    #     print(sim_score)
+    #     # if sim_score > 0.1:
+    #     rank_dict[node2.item()] = sim_score
+    # # top_k = sorted(rank_dict.items())[:k]
+    # top_k = sorted(rank_dict.items(), key=lambda item: item[1])[:k]
+
     rank_dict = {}
-    for node2 in remaining_nodes:
+    for node2 in tqdm(remaining_nodes, desc='num_nodes'):
+        pred_label_2 = probs[node2].argmax().item()
         subgraph2, mapping2 = extract_k_hop_subgraphs(node2.item(), graph)
-        sim_score = gen_alignment_matrix(model, subgraph1, subgraph2, mapping1, mapping2)
-        print(sim_score)
+        sim_score = gen_alignment_matrix(nm_model, subgraph1, subgraph2, mapping1, mapping2)
         # if sim_score > 0.1:
-        rank_dict[node2.item()] = sim_score
+        if pred_label_1 != pred_label_2:
+            # print(f'counterfactual: {pred_label_1}, {pred_label_2}')
+            # print(f'real counterfactual: {graph.y[node1]}, {graph.y[node2]}')
+            rank_dict[node2.item()] = sim_score
     # top_k = sorted(rank_dict.items())[:k]
-    top_k = sorted(rank_dict.items(), key=lambda item: item[1])[:k]
-    
+    # top_k = sorted(rank_dict.items(), key=lambda item: item[1], reverse=True)[:k]
+    top_k = sorted(rank_dict.items(), key=lambda item: item[1], reverse=False)[:k]
+
     for node, score in top_k:
         print(f"node:{node},score:{score}")
         subgraph, _ = extract_k_hop_subgraphs(node, graph)

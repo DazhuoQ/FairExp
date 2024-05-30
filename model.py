@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GCNConv
 from torch_geometric.datasets import Planetoid
 
-from data_loader import dataset_func
+from utils import dataset_func
 
 class GCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -24,7 +24,7 @@ class GCN(torch.nn.Module):
 if __name__ == '__main__':
     # training
     dataset_name = 'bail'
-    data = dataset_func(dataset_name)
+    data = dataset_func(dataset_name, 'sa')
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = GCN(input_dim=data.x.size(1), hidden_dim=16, output_dim=data.y.size(0)).to(device)
     data.to(device)
